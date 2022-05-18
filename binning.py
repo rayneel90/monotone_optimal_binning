@@ -105,6 +105,8 @@ class WoeIv(BaseEstimator, TransformerMixin):
             if self.verbose:
                 print("creating monotonic bins for {}".format(colnm))
             tmp_df, null_df, asc, bins = self.__create_monotonic_bin(colnm)
+            if tmp_df is None:
+                continue
             if self.verbose:
                 print("Optimizing bins for {}".format(colnm))
             self.__optimize_p(colnm, tmp_df, asc, bins)
@@ -136,6 +138,20 @@ class WoeIv(BaseEstimator, TransformerMixin):
         null_df = tmp_df[tmp_df.isna().any(axis=1)].copy()
         tmp_df.dropna(how='any', inplace=True)
         tmp_df.sort_values(colnm, inplace=True)
+
+        # If missing value more than (1-min_sample_fraction), skipping binning
+        if null_df.shape[0] / self.X.shape[0] >= (1 -self.smpl_thresh):
+            if self.verbose:
+                print ("Feature {} contains more than {:.0%} missing values. "
+                       "Skipping binning.".format(colnm, 1-self.smpl_thresh))
+            return None, None, None, None
+        if tmp_df[colnm].value_counts(normalize=True).max() >= \
+                (1 - self.smpl_thresh):
+            if self.verbose:
+                print("more than {:.0%} observations concentrated against "
+                      "single value. Skipping binning".format(
+                    1 - self.smpl_thresh))
+            return None, None, None, None
 
         # asc if the indicator whether the variable has increasing or decreasing
         # relation with target. As a proxy of monotonicity, which is rare with
@@ -289,7 +305,7 @@ class WoeIv(BaseEstimator, TransformerMixin):
             max_p = init_summary['p_val'].max()
             i = i+ 1
             if self.verbose:
-                print("Iteration {i}: max p {:.2f}".format(i, max_p))
+                print("Iteration {}: max p {:.2f}".format(i, max_p))
             if max_p > self.p_threshold:
                 bins = np.sort(
                     init_summary[init_summary.p_val != max_p].bin_thresh.values)
