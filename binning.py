@@ -104,7 +104,7 @@ class WoeIv(BaseEstimator, TransformerMixin):
         for colnm in self.X.columns:
             if self.verbose:
                 print("creating monotonic bins for {}".format(colnm))
-            tmp_df, null_df, asc, bins = self.__create_monotonic_bin(colnm)
+            tmp_df, null_df, asc, bins = self.create_monotonic_bin(colnm)
             if tmp_df is None:
                 continue
             if self.verbose:
@@ -123,7 +123,7 @@ class WoeIv(BaseEstimator, TransformerMixin):
         # Compute WOE and IV for finalised bins
         self.__compute_woe_iv()
 
-    def __create_monotonic_bin(self, colnm) -> object:
+    def create_monotonic_bin(self, colnm) -> object:
         """
         Creates a binning which is monotonic in terms of bad rate.
         :param colnm: name of the feature which is binned
@@ -140,17 +140,18 @@ class WoeIv(BaseEstimator, TransformerMixin):
         tmp_df.sort_values(colnm, inplace=True)
 
         # If missing value more than (1-min_sample_fraction), skipping binning
-        if null_df.shape[0] / self.X.shape[0] >= (1 -self.smpl_thresh):
+        if null_df.shape[0] / self.X.shape[0] >= (1 - self.smpl_thresh):
             if self.verbose:
-                print ("Feature {} contains more than {:.0%} missing values. "
-                       "Skipping binning.".format(colnm, 1-self.smpl_thresh))
+                print("Feature {} contains more than {:.0%} missing values. "
+                      "Skipping binning.".format(colnm, 1 - 2 * self.smpl_thresh))
             return None, None, None, None
         if tmp_df[colnm].value_counts(normalize=True).max() >= \
                 (1 - self.smpl_thresh):
             if self.verbose:
-                print("more than {:.0%} observations concentrated against "
-                      "single value. Skipping binning".format(
-                    1 - self.smpl_thresh))
+                print(
+                    "more than {:.0%} observations concentrated against single "
+                    "value. Skipping binning".format(1 - 2 * self.smpl_thresh)
+                )
             return None, None, None, None
 
         # asc if the indicator whether the variable has increasing or decreasing
@@ -159,7 +160,7 @@ class WoeIv(BaseEstimator, TransformerMixin):
         # highest 25% of the feature value. asc is True if the relation is
         # decreasing, i.e. bad rate is higher for lower value of feature.
         asc = tmp_df.iloc[:tmp_df.shape[0] // 4].target.mean() > \
-            tmp_df.iloc[3 * tmp_df.shape[0] // 4:].target.mean()
+              tmp_df.iloc[3 * tmp_df.shape[0] // 4:].target.mean()
 
         # begin with each observation as separate bin
         bins = np.sort(tmp_df[colnm].unique())
@@ -206,7 +207,7 @@ class WoeIv(BaseEstimator, TransformerMixin):
                     print({"Monotonicy Achived. {} bins created.".format(
                         init_summary.shape[0])})
                 break  # end iteration if all bins maintain monotonicity
-            i = i+1
+            i = i + 1
             if self.verbose:
                 print("Iter {}: removing {} non monotonic bins".format(
                     i, non_mono.shape[0]))
@@ -293,23 +294,26 @@ class WoeIv(BaseEstimator, TransformerMixin):
             # is above p-val threshold and hence will always get combined.
             init_summary['p_val'] = \
                 init_summary['p_val'] + (
-                    (init_summary['bad_cnt'] / self.y.sum() < self.trgt_thresh) |
-                    (init_summary['prev_bad_cnt'] / self.y.sum() < self.trgt_thresh) |
-                    (init_summary['nobs'] / self.y.shape[0] < self.smpl_thresh) |
-                    (init_summary['prev_nobs'] / self.y.shape[0] < self.smpl_thresh)
+                        (init_summary['bad_cnt'] / self.y.sum() < self.trgt_thresh) |
+                        (init_summary['prev_bad_cnt'] / self.y.sum() < self.trgt_thresh) |
+                        (init_summary['nobs'] / self.y.shape[0] < self.smpl_thresh) |
+                        (init_summary['prev_nobs'] / self.y.shape[0] < self.smpl_thresh)
                 ).astype(int)
             # compute the max of p values and remove the corresponding bin if
             # the value is more than the user-defined threshold. If max p-value
             # is less than the threshold, it means that the optimality has been
             # achieved and the iteration shall stop
             max_p = init_summary['p_val'].max()
-            i = i+ 1
+            i = i + 1
             if self.verbose:
                 print("Iteration {}: max p {:.2f}".format(i, max_p))
             if max_p > self.p_threshold:
                 bins = np.sort(
                     init_summary[init_summary.p_val != max_p].bin_thresh.values)
             else:
+                break
+            # If only two bins remain, exit loop
+            if len(bins) == 0:
                 break
         if asc:
             bins = np.sort(self.optimized_bins[colnm].bin_thresh)
@@ -391,8 +395,6 @@ class WoeIv(BaseEstimator, TransformerMixin):
             x,
             pd.IntervalIndex(self.woe_details[x.name].bin_thresh.dropna())
         ).astype("interval").map(dict(zip(
-                self.woe_details[x.name].bin_thresh,
-                self.woe_details[x.name].woe
+            self.woe_details[x.name].bin_thresh,
+            self.woe_details[x.name].woe
         ))))
-
-
